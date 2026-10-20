@@ -29,86 +29,87 @@ outputs:
         value: ${{ steps.install.outputs.version3 }}
 
 runs:
+  using: composite
   steps:
     - id: install
       shell: python
       env:
-          ARG_VERSION: ${{ inputs.version }}
-          ARG_DISTRO: ${{ inputs.distro }}
+          ARG_VERSION: "${{ inputs.version }}"
+          ARG_DISTRO: "${{ inputs.distro }}"
       run: |
-          import os,sys,platform,re,tempfile
-          from pathlib import Path
-          import urllib.request
-          version = os.environ["ARG_VERSION"]
-          distro  = os.environ["ARG_DISTRO"]
+            import os,sys,platform,re,tempfile,shutil
+            import tarfile,zipfile
+            from pathlib import Path
+            import urllib.request
 
-          if distro in ['linux64x86','linuxaarch64','win64x86','osxaarch64']:
-            pass
-          elif distro != 'auto':
-            print(f"Invalid distro parameter value: {distro}",file=sys.stderr)
-            sys.exit(1)
-          elif sys.platform == 'linux':
-              if platform.machine() in ['AMD64','x86_64']: distro = 'linux64x86'
-              else: distro = 'linuxaarch64'
-              distro_ext = '.tar.bz2'
-          elif sys.platform == 'darwin':
-              distro = 'osxaarch64'
-              distro_ext = '.tar.bz2'
-          else: # sys.platform == 'win32':
-              distro = 'win64x86'
-              distro_ext = '.zip'
 
-          if 'HOME' in os.environ:
-              home_dir = Path(os.environ['HOME'])
-              home_local = home_dir.joinpath('.local')
-              download_dir = home_dir.joinpath('Downloads')
-          elif 'USERPROFILE' in os.environ:
-              home_dir = Path(os.environ['USERPROFILE'])
-              download_dir = home_dir.joinpath('Downloads')
-          else:
-              print("Failed to find suitable home directory for downloading",file=sys.stderr)
-              sys.exit(1)
+            version = os.environ["ARG_VERSION"]
+            distro  = os.environ["ARG_DISTRO"]
 
-          if 'PROGRAMFILES' in os.environ:
-              global_path = Path(os.environ['PROGRAMFILES'])
-          else:
-              global_path = Path('/opt')
+            if distro in ['linux64x86','linuxaarch64','win64x86','osxaarch64']:
+                distro_ext = '.tar.bz2' if distro != 'win64x86' else '.zip'
+            elif distro != 'auto':
+                print(f"Invalid distro parameter value: {distro}",file=sys.stderr)
+                sys.exit(1)
+            elif sys.platform == 'linux':
+                if platform.machine() in ['AMD64','x86_64']: distro = 'linux64x86'
+                else: distro = 'linuxaarch64'
+                distro_ext = '.tar.bz2'
+            elif sys.platform == 'darwin':
+                distro = 'osxaarch64'
+                distro_ext = '.tar.bz2'
+            else: # sys.platform == 'win32':
+                distro = 'win64x86'
+                distro_ext = '.zip'
 
-          if version == 'latest':
-              with urllib.request.urlopen(f'https://download.mosek.com/stable/latest/version') as r:
-                  fullversion = r.read().strip().decode('ascii',errors='ignore')
-          else:
-              o = re.match(r'([0-9]+)\.([0-9]+)(?:\.([0-9]+))?',version)
-              if o is None:
-                  print(f"Invalid version requested: {version}",file=sys.stderr)
-                  sys.exit(1)
-              if o.group(3) is None:
-                  ver2 = f'{o.group(1)}.{o.group(2)}'
-                  with urllib.request.urlopen(f'https://download.mosek.com/stable/{ver2}/version') as r:
-                      fullversion = r.read().strip().decode('ascii',errors='ignore')
-              else:
-                  fullversion = o.group(0)
-                    ver2 = fullversion.rsplit('.',1)[0]
+            if 'HOME' in os.environ:
+                home_dir = Path(os.environ['HOME'])
+                home_local = home_dir.joinpath('.local')
+                download_dir = home_dir.joinpath('Downloads')
+            elif 'USERPROFILE' in os.environ:
+                home_dir = Path(os.environ['USERPROFILE'])
+                download_dir = home_dir.joinpath('Downloads')
+            else:
+                print("Failed to find suitable home directory for downloading",file=sys.stderr)
+                sys.exit(1)
 
-          with urllib.request.urlopen(f'https://download.mosek.com/stable/{fullversion}/mosektools{distro}{distro_ext}') as req:
-              with tempfile.NamedTemporaryFile(prefix=f"mosektools{a.platform}-{mosekverstr}-",suffix=distro_ext,delete_on_close=False) as f:
-                  shutil.copyfileobj(req,f)
-                  f.flush()
-                  print(f"=== Unpacking to {install_prefix} ({mosek_base})",file=sys.stderr)
-                  f.close()
-                  try: os.makedirs(global_path)
-                  except: pass
-                  if distro_ext == '.zip':
-                      with zipfile.ZipFile(f.name,'r') as zf:
-                          zf.extractall(str(global_path))
-                  else:
-                      with tarfile.open(f.name) as zf:
-                          zf.extractall(str(global_path))
-          mosekbindir = global_path.joinpath('mosek',ver2,'tools','platform',distro,'bin')
+            if 'PROGRAMFILES' in os.environ:
+                global_path = Path(os.environ['PROGRAMFILES'])
+            else:
+                global_path = Path('/opt')
 
-          with open(os.environ['GITHUB_OUTPUT'],'w') as f:
-            f.write(f'mosekbase={global_path}\n')
-            f.write(f'mosekbindir={mosekbindir}\n')
-            f.write(f'mosekdistro={distro}\n')
-            f.write(f'version3={fullversion}\n')
-            f.write(f'version2={ver2}\n')
+            if version == 'latest':
+                with urllib.request.urlopen('https://download.mosek.com/stable/latest/version') as r:
+                    fullversion = r.read().strip().decode('ascii',errors='ignore')
+            else:
+                o = re.match(r'([0-9]+)\.([0-9]+)(?:\.([0-9]+))?',version)
+                if o is None:
+                    print(f"Invalid version requested: {version}",file=sys.stderr)
+                    sys.exit(1)
+                if o.group(3) is None:
+                    with urllib.request.urlopen(f'https://download.mosek.com/stable/{o.group(1)}.{o.group(2)}/version') as r:
+                        fullversion = r.read().strip().decode('ascii',errors='ignore')
+                else:
+                    fullversion = o.group(0)
+            ver2 = fullversion.rsplit('.',1)[0]
+
+            with urllib.request.urlopen(f'https://download.mosek.com/stable/{fullversion}/mosektools{distro}{distro_ext}') as req, \
+                 tempfile.NamedTemporaryFile(prefix=f"mosektools{distro}-{fullversion}-",suffix=distro_ext,delete_on_close=False) as f:
+                    shutil.copyfileobj(req,f)
+                    f.close()
+                    try: os.makedirs(global_path)
+                    except: pass
+                    if distro_ext == '.zip':
+                        with zipfile.ZipFile(f.name,'r') as zf:
+                            zf.extractall(str(global_path))
+                    else:
+                        with tarfile.open(f.name) as zf:
+                            zf.extractall(str(global_path))
+            mosekbindir = global_path.joinpath('mosek',ver2,'tools','platform',distro,'bin')
+
+            with open(os.environ['GITHUB_OUTPUT'],'w') as f:
+                f.write(f'mosekbase={global_path}\n')
+                f.write(f'mosekbindir={mosekbindir}\n')
+                f.write(f'mosekdistro={distro}\n')
+                f.write(f'version3={fullversion}\n')
+                f.write(f'version2={ver2}\n')
