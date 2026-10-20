@@ -2,6 +2,7 @@ Github action for installing MOSEK distro. This will install MOSEK in `/opt` or 
 
 It is possible to apply this action multiple times to install multiple MOSEK versions or distros.
 
+Please note that this does NOT install a license. The user needs to ensure that a license is available when actually running MOSEK.
 
 Action inputs (all optional):
 - `version`. By default the latest stable release is chosen. This can be overridden by specifying a major/minor version
